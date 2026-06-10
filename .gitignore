@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Datos locales del proyecto
+data/raw/*.csv
+data/processed/*.csv
+
+# Archivos de macOS
+.DS_Store
