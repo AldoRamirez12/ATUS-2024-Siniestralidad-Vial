@@ -1,6 +1,6 @@
 # 🚗 Análisis de siniestralidad vial en México — ATUS 2024
 
-> Este proyecto forma parte del módulo de Business Intelligence y SQL Avanzado del diplomado. Su objetivo es construir un flujo completo de datos: desde los microdatos públicos del INEGI hasta un modelo dimensional en Aurora PostgreSQL, consultas analíticas y visualizaciones.
+> El objetivo del proyecto es construir un flujo completo de datos: desde los microdatos públicos del INEGI hasta un modelo dimensional en Aurora PostgreSQL, consultas analíticas y visualizaciones.
 
 ---
 
@@ -360,6 +360,5 @@ python dashboard/generar_visualizaciones.py
 
 ## 👤 Autor
 
-**Aldo Ramírez**
+**Aldo Ramírez Alanís**
 
-Proyecto final del módulo de Business Intelligence y SQL Avanzado.
