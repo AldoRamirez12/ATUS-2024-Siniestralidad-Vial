@@ -19,14 +19,15 @@ SET search_path TO atus_dwh;
 -- GROUP BY + RANK() OVER()
 -- =============================================================================
 
+
 WITH accidentes_entidad AS (
     SELECT
         du.entidad,
         SUM(fa.num_accidentes) AS total_accidentes,
         SUM(fa.total_muertos) AS total_muertos,
         SUM(fa.total_heridos) AS total_heridos
-    FROM fact_accidentes fa
-    JOIN dim_ubicacion du
+    FROM atus_dwh.fact_accidentes fa
+    JOIN atus_dwh.dim_ubicacion du
         ON fa.ubicacion_key = du.ubicacion_key
     GROUP BY du.entidad
 )
@@ -36,18 +37,11 @@ SELECT
     total_accidentes,
     total_muertos,
     total_heridos,
-    ROUND(
-        total_muertos::NUMERIC / NULLIF(total_accidentes, 0),
-        4
-    ) AS muertos_por_accidente,
-    ROUND(
-        total_heridos::NUMERIC / NULLIF(total_accidentes, 0),
-        4
-    ) AS heridos_por_accidente
+    ROUND(total_muertos::NUMERIC / NULLIF(total_accidentes, 0), 4) AS muertos_por_accidente,
+    ROUND(total_heridos::NUMERIC / NULLIF(total_accidentes, 0), 4) AS heridos_por_accidente
 FROM accidentes_entidad
 ORDER BY ranking
 LIMIT 10;
-
 
 -- =============================================================================
 -- 2. Tendencia mensual de accidentes, muertos y heridos
@@ -125,52 +119,7 @@ ORDER BY full_date;
 
 
 -- =============================================================================
--- 4. Severidad por tipo de accidente
--- =============================================================================
--- Pregunta:
--- ¿Qué tipos de accidente presentan mayor severidad?
---
--- Técnica:
--- CTE + métricas derivadas + DENSE_RANK()
--- =============================================================================
-
-WITH severidad_tipo AS (
-    SELECT
-        da.tipo_accidente,
-        SUM(fa.num_accidentes) AS total_accidentes,
-        SUM(fa.total_muertos) AS total_muertos,
-        SUM(fa.total_heridos) AS total_heridos,
-        SUM(fa.total_muertos + fa.total_heridos) AS victimas_totales
-    FROM fact_accidentes fa
-    JOIN dim_accidente da
-        ON fa.accidente_key = da.accidente_key
-    GROUP BY da.tipo_accidente
-)
-SELECT
-    DENSE_RANK() OVER (
-        ORDER BY victimas_totales::NUMERIC / NULLIF(total_accidentes, 0) DESC
-    ) AS ranking_severidad,
-    tipo_accidente,
-    total_accidentes,
-    total_muertos,
-    total_heridos,
-    victimas_totales,
-    ROUND(
-        victimas_totales::NUMERIC / NULLIF(total_accidentes, 0),
-        4
-    ) AS victimas_por_accidente,
-    ROUND(
-        total_muertos::NUMERIC / NULLIF(total_accidentes, 0),
-        4
-    ) AS muertos_por_accidente
-FROM severidad_tipo
-WHERE total_accidentes >= 100
-ORDER BY ranking_severidad
-LIMIT 15;
-
-
--- =============================================================================
--- 5. Accidentes por día de semana y banda horaria
+-- 4. Accidentes por día de semana y banda horaria
 -- =============================================================================
 -- Pregunta:
 -- ¿En qué combinaciones de día y franja horaria se concentran más accidentes?
@@ -207,7 +156,7 @@ ORDER BY
 
 
 -- =============================================================================
--- 6. Municipios con mayor siniestralidad dentro de cada entidad
+-- 5. Municipios con mayor siniestralidad dentro de cada entidad
 -- =============================================================================
 -- Pregunta:
 -- ¿Cuál es el municipio con más accidentes dentro de cada entidad federativa?
@@ -254,7 +203,7 @@ ORDER BY entidad, ranking_en_entidad;
 
 
 -- =============================================================================
--- 7. Participación porcentual de accidentes por clasificación
+-- 6. Participación porcentual de accidentes por clasificación
 -- =============================================================================
 -- Pregunta:
 -- ¿Qué proporción de accidentes corresponde a sólo daños, no fatales y fatales?
@@ -289,7 +238,7 @@ ORDER BY total_accidentes DESC;
 
 
 -- =============================================================================
--- 8. Perfil del conductor en accidentes con víctimas
+-- 7. Perfil del conductor en accidentes con víctimas
 -- =============================================================================
 -- Pregunta:
 -- ¿Qué características del conductor aparecen con mayor frecuencia en accidentes
@@ -330,7 +279,7 @@ LIMIT 20;
 
 
 -- =============================================================================
--- 9. Vehículos más involucrados en accidentes
+-- 8. Vehículos más involucrados en accidentes
 -- =============================================================================
 -- Pregunta:
 -- ¿Qué tipos de vehículos aparecen con mayor frecuencia en los accidentes?
@@ -367,55 +316,4 @@ SELECT
 FROM vehiculos
 ORDER BY total DESC;
 
-
--- =============================================================================
--- 10. Entidades con severidad por encima del promedio nacional
--- =============================================================================
--- Pregunta:
--- ¿Qué entidades tienen una razón de víctimas por accidente superior al promedio
--- nacional?
---
--- Técnica:
--- CTE + CROSS JOIN + comparación contra promedio nacional
--- =============================================================================
-
-WITH entidad_severidad AS (
-    SELECT
-        du.entidad,
-        SUM(fa.num_accidentes) AS total_accidentes,
-        SUM(fa.total_muertos + fa.total_heridos) AS victimas_totales,
-        ROUND(
-            SUM(fa.total_muertos + fa.total_heridos)::NUMERIC
-            / NULLIF(SUM(fa.num_accidentes), 0),
-            4
-        ) AS victimas_por_accidente
-    FROM fact_accidentes fa
-    JOIN dim_ubicacion du
-        ON fa.ubicacion_key = du.ubicacion_key
-    GROUP BY du.entidad
-),
-promedio_nacional AS (
-    SELECT
-        ROUND(
-            SUM(victimas_totales)::NUMERIC
-            / NULLIF(SUM(total_accidentes), 0),
-            4
-        ) AS victimas_por_accidente_nacional
-    FROM entidad_severidad
-)
-SELECT
-    es.entidad,
-    es.total_accidentes,
-    es.victimas_totales,
-    es.victimas_por_accidente,
-    pn.victimas_por_accidente_nacional,
-    ROUND(
-        es.victimas_por_accidente
-        - pn.victimas_por_accidente_nacional,
-        4
-    ) AS diferencia_vs_nacional
-FROM entidad_severidad es
-CROSS JOIN promedio_nacional pn
-WHERE es.victimas_por_accidente > pn.victimas_por_accidente_nacional
-ORDER BY diferencia_vs_nacional DESC;
 
