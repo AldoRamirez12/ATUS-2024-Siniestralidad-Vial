@@ -288,29 +288,79 @@ Las consultas analíticas se encuentran en:
 analisis/queries_analiticas.sql
 ```
 
-El análisis final se compone de **7 consultas principales**, alineadas con las visualizaciones del dashboard interactivo:
+Estas consultas responden las principales preguntas del proyecto y alimentan las visualizaciones del dashboard interactivo.
+
+---
 
 ### 1. Ranking de entidades con mayor número de accidentes
 
 **Pregunta:**
 ¿Qué entidades concentran la mayor cantidad de accidentes viales en 2024?
 
-**Técnica SQL utilizada:**
-`GROUP BY` + `RANK() OVER()`
-
-Esta consulta agrega los accidentes por entidad federativa y genera un ranking descendente para identificar las zonas con mayor concentración de siniestros viales.
+```sql
+WITH accidentes_entidad AS (
+    SELECT
+        du.entidad,
+        SUM(fa.num_accidentes) AS total_accidentes,
+        SUM(fa.total_muertos) AS total_muertos,
+        SUM(fa.total_heridos) AS total_heridos
+    FROM atus_dwh.fact_accidentes fa
+    JOIN atus_dwh.dim_ubicacion du
+        ON fa.ubicacion_key = du.ubicacion_key
+    GROUP BY du.entidad
+)
+SELECT
+    RANK() OVER (ORDER BY total_accidentes DESC) AS ranking,
+    entidad,
+    total_accidentes,
+    total_muertos,
+    total_heridos,
+    ROUND(total_muertos::NUMERIC / NULLIF(total_accidentes, 0), 4) AS muertos_por_accidente,
+    ROUND(total_heridos::NUMERIC / NULLIF(total_accidentes, 0), 4) AS heridos_por_accidente
+FROM accidentes_entidad
+ORDER BY ranking
+LIMIT 10;
+```
 
 ---
 
-### 2. Tendencia mensual de accidentes
+### 2. Tendencia mensual de accidentes, muertos y heridos
 
 **Pregunta:**
-¿Cómo evolucionó el número de accidentes viales a lo largo de 2024?
+¿Cómo evolucionaron los accidentes viales a lo largo de 2024?
 
-**Técnica SQL utilizada:**
-`CTE` + `LAG() OVER()`
-
-La consulta calcula el total mensual de accidentes y compara cada mes contra el mes anterior mediante una función de ventana. Esto permite observar variaciones mensuales y detectar periodos con aumentos o disminuciones relevantes.
+```sql
+WITH accidentes_mes AS (
+    SELECT
+        df.mes_numero,
+        df.mes_nombre,
+        SUM(fa.num_accidentes) AS total_accidentes,
+        SUM(fa.total_muertos) AS total_muertos,
+        SUM(fa.total_heridos) AS total_heridos
+    FROM atus_dwh.fact_accidentes fa
+    JOIN atus_dwh.dim_fecha df
+        ON fa.date_key = df.date_key
+    GROUP BY df.mes_numero, df.mes_nombre
+)
+SELECT
+    mes_numero,
+    mes_nombre,
+    total_accidentes,
+    total_muertos,
+    total_heridos,
+    LAG(total_accidentes) OVER (ORDER BY mes_numero) AS accidentes_mes_anterior,
+    total_accidentes
+        - LAG(total_accidentes) OVER (ORDER BY mes_numero) AS variacion_accidentes,
+    ROUND(
+        100.0 * (
+            total_accidentes
+            - LAG(total_accidentes) OVER (ORDER BY mes_numero)
+        ) / NULLIF(LAG(total_accidentes) OVER (ORDER BY mes_numero), 0),
+        2
+    ) AS variacion_porcentual_accidentes
+FROM accidentes_mes
+ORDER BY mes_numero;
+```
 
 ---
 
@@ -319,34 +369,109 @@ La consulta calcula el total mensual de accidentes y compara cada mes contra el 
 **Pregunta:**
 ¿Existen periodos con incrementos sostenidos en la frecuencia de accidentes?
 
-**Técnica SQL utilizada:**
-`AVG() OVER()` con ventana móvil de 7 días
-
-La consulta calcula el total diario de accidentes y un promedio móvil de 7 días. Esto suaviza la variabilidad diaria y permite identificar tendencias más estables en la siniestralidad.
+```sql
+WITH accidentes_dia AS (
+    SELECT
+        df.full_date,
+        SUM(fa.num_accidentes) AS total_accidentes
+    FROM atus_dwh.fact_accidentes fa
+    JOIN atus_dwh.dim_fecha df
+        ON fa.date_key = df.date_key
+    GROUP BY df.full_date
+)
+SELECT
+    full_date,
+    total_accidentes,
+    ROUND(
+        AVG(total_accidentes) OVER (
+            ORDER BY full_date
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ),
+        2
+    ) AS promedio_movil_7_dias
+FROM accidentes_dia
+ORDER BY full_date;
+```
 
 ---
 
 ### 4. Accidentes por día de semana y banda horaria
 
 **Pregunta:**
-¿En qué combinaciones de día de semana y franja horaria se concentran más accidentes?
+¿En qué combinaciones de día y franja horaria se concentran más accidentes?
 
-**Técnica SQL utilizada:**
-`GROUP BY` + ordenamiento personalizado con `CASE`
-
-La consulta cruza la dimensión de fecha con la dimensión de tiempo para analizar accidentes por día de la semana y banda horaria: madrugada, mañana, tarde, noche o sin especificar.
+```sql
+SELECT
+    df.dia_semana_numero,
+    df.dia_semana_nombre,
+    dt.banda_horaria,
+    SUM(fa.num_accidentes) AS total_accidentes,
+    SUM(fa.total_muertos) AS total_muertos,
+    SUM(fa.total_heridos) AS total_heridos
+FROM atus_dwh.fact_accidentes fa
+JOIN atus_dwh.dim_fecha df
+    ON fa.date_key = df.date_key
+JOIN atus_dwh.dim_tiempo dt
+    ON fa.time_key = dt.time_key
+GROUP BY
+    df.dia_semana_numero,
+    df.dia_semana_nombre,
+    dt.banda_horaria
+ORDER BY
+    df.dia_semana_numero,
+    CASE dt.banda_horaria
+        WHEN 'Madrugada' THEN 1
+        WHEN 'Mañana' THEN 2
+        WHEN 'Tarde' THEN 3
+        WHEN 'Noche' THEN 4
+        ELSE 5
+    END;
+```
 
 ---
 
 ### 5. Municipios con mayor siniestralidad dentro de cada entidad
 
 **Pregunta:**
-¿Cuáles son los municipios con más accidentes dentro de cada entidad federativa?
+¿Cuál es el municipio con más accidentes dentro de cada entidad federativa?
 
-**Técnica SQL utilizada:**
-`ROW_NUMBER() OVER(PARTITION BY entidad)`
-
-Esta consulta calcula el total de accidentes por municipio y genera un ranking interno por entidad. Permite identificar los municipios más relevantes dentro de cada estado.
+```sql
+WITH accidentes_municipio AS (
+    SELECT
+        du.entidad,
+        du.municipio,
+        SUM(fa.num_accidentes) AS total_accidentes,
+        SUM(fa.total_muertos) AS total_muertos,
+        SUM(fa.total_heridos) AS total_heridos
+    FROM atus_dwh.fact_accidentes fa
+    JOIN atus_dwh.dim_ubicacion du
+        ON fa.ubicacion_key = du.ubicacion_key
+    GROUP BY du.entidad, du.municipio
+),
+ranking_municipios AS (
+    SELECT
+        entidad,
+        municipio,
+        total_accidentes,
+        total_muertos,
+        total_heridos,
+        ROW_NUMBER() OVER (
+            PARTITION BY entidad
+            ORDER BY total_accidentes DESC
+        ) AS ranking_en_entidad
+    FROM accidentes_municipio
+)
+SELECT
+    entidad,
+    municipio,
+    total_accidentes,
+    total_muertos,
+    total_heridos,
+    ranking_en_entidad
+FROM ranking_municipios
+WHERE ranking_en_entidad <= 3
+ORDER BY entidad, ranking_en_entidad;
+```
 
 ---
 
@@ -355,36 +480,68 @@ Esta consulta calcula el total de accidentes por municipio y genera un ranking i
 **Pregunta:**
 ¿Qué proporción de accidentes corresponde a sólo daños, no fatales y fatales?
 
-**Técnica SQL utilizada:**
-`SUM() OVER()` para calcular porcentaje sobre el total
-
-La consulta agrupa los accidentes por clasificación y calcula su participación porcentual respecto al total nacional. Esto permite distinguir entre accidentes de sólo daños, no fatales y fatales.
+```sql
+WITH accidentes_clasificacion AS (
+    SELECT
+        da.clasificacion,
+        SUM(fa.num_accidentes) AS total_accidentes,
+        SUM(fa.total_muertos) AS total_muertos,
+        SUM(fa.total_heridos) AS total_heridos
+    FROM atus_dwh.fact_accidentes fa
+    JOIN atus_dwh.dim_accidente da
+        ON fa.accidente_key = da.accidente_key
+    GROUP BY da.clasificacion
+)
+SELECT
+    clasificacion,
+    total_accidentes,
+    total_muertos,
+    total_heridos,
+    ROUND(
+        100.0 * total_accidentes
+        / SUM(total_accidentes) OVER (),
+        2
+    ) AS porcentaje_accidentes
+FROM accidentes_clasificacion
+ORDER BY total_accidentes DESC;
+```
 
 ---
 
 ### 7. Vehículos más involucrados en accidentes
 
 **Pregunta:**
-¿Qué tipos de vehículos aparecen con mayor frecuencia en los accidentes registrados?
+¿Qué tipos de vehículos aparecen con mayor frecuencia en los accidentes?
 
-**Técnica SQL utilizada:**
-`UNION ALL` para unpivot manual + `RANK() OVER()`
-
-Dado que ATUS reporta los vehículos involucrados como columnas separadas, esta consulta transforma dichas columnas en filas mediante `UNION ALL`. Después calcula el total por tipo de vehículo y genera un ranking.
-
----
-
-### Resumen de técnicas SQL utilizadas
-
-| Consulta                      | Técnica principal                     |
-| ----------------------------- | ------------------------------------- |
-| Ranking de entidades          | `RANK() OVER()`                       |
-| Tendencia mensual             | `LAG() OVER()`                        |
-| Promedio móvil semanal        | `AVG() OVER()`                        |
-| Día de semana × banda horaria | `GROUP BY` + `CASE`                   |
-| Top municipios por entidad    | `ROW_NUMBER() OVER(PARTITION BY ...)` |
-| Clasificación de accidentes   | `SUM() OVER()`                        |
-| Vehículos involucrados        | `UNION ALL` + `RANK() OVER()`         |
+```sql
+WITH vehiculos AS (
+    SELECT 'Automovil' AS tipo_vehiculo, SUM(automovil) AS total FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Motocicleta', SUM(motocicleta) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Bicicleta', SUM(bicicleta) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Camioneta', SUM(camioneta) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Camion', SUM(camion) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Microbus', SUM(microbus) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Omnibus', SUM(omnibus) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Tractor', SUM(tractor) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Ferrocarril', SUM(ferrocarril) FROM atus_dwh.fact_accidentes
+    UNION ALL
+    SELECT 'Otro vehiculo', SUM(otro_vehiculo) FROM atus_dwh.fact_accidentes
+)
+SELECT
+    tipo_vehiculo,
+    total,
+    RANK() OVER (ORDER BY total DESC) AS ranking
+FROM vehiculos
+ORDER BY total DESC;
+```
 
 ## 📊 Dashboard interactivo
 
