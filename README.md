@@ -1,6 +1,6 @@
 # 🚗 Análisis de siniestralidad vial en México — ATUS 2024
 
-> El objetivo del proyecto es construir un flujo completo de datos: desde los microdatos públicos del INEGI hasta un modelo dimensional en Aurora PostgreSQL, consultas analíticas y visualizaciones.
+> El objetivo de este proyecto es construir un flujo completo de datos: desde los microdatos públicos del INEGI hasta un modelo dimensional en Aurora PostgreSQL, consultas analíticas avanzadas y un dashboard interactivo.
 
 ---
 
@@ -8,21 +8,21 @@
 
 | Campo                  | Valor                                                                                                                                                                                                           |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pregunta analítica** | ¿Cuáles son los patrones geográficos, temporales y de severidad de los accidentes viales registrados en México durante 2024, y qué factores se asocian con una mayor cantidad de personas heridas y fallecidas? |
+| **Pregunta analítica** | ¿Cuáles son los patrones geográficos, temporales y de severidad de los accidentes viales registrados en México durante 2024, y qué factores se asocian con una mayor cantidad de personas heridas? |
 | **Dataset**            | Microdatos anuales de Accidentes de Tránsito Terrestre en Zonas Urbanas y Suburbanas (ATUS), año 2024.                                                                                                          |
 | **Fuente**             | [INEGI — Accidentes de Tránsito Terrestre en Zonas Urbanas y Suburbanas (ATUS)](https://www.inegi.org.mx/programas/accidentes/?ps=Microdatos)                                                                   |
 | **Volumen**            | Aproximadamente 390 mil registros de accidentes viales.                                                                                                                                                         |
 | **Modelo**             | Esquema estrella con 1 tabla de hechos y 5 dimensiones: fecha, tiempo, ubicación, accidente y conductor.                                                                                                        |
 | **Infraestructura**    | Aurora PostgreSQL en AWS, schema `atus_dwh`.                                                                                                                                                                    |
 | **ETL**                | Python con `pandas`, `SQLAlchemy` y validaciones post-carga.                                                                                                                                                    |
-| **SQL avanzado**       | CTE, funciones de ventana, rankings, variaciones temporales, agregaciones condicionales y análisis de severidad.                                                                                                |
-| **Dashboard**          | Visualizaciones estáticas con `matplotlib`: mapa, series temporales, rankings y heatmap por hora y día de la semana.                                                                                            |
+| **SQL avanzado**       | CTEs, funciones de ventana, rankings, variaciones temporales, agregaciones condicionales y análisis de severidad.                                                                                               |
+| **Dashboard**          | Dashboard interactivo desarrollado con `Streamlit` y `Plotly`.                                                                                                                                                  |
 
 ---
 
 ## 🎯 Problema y motivación
 
-Los accidentes viales constituyen un problema relevante para la movilidad y la seguridad pública. Analizar únicamente el número total de accidentes no permite identificar dónde, cuándo y bajo qué condiciones se presentan los eventos más severos.
+Los accidentes viales constituyen un problema relevante para la movilidad, la seguridad pública y la planeación urbana. Analizar únicamente el número total de accidentes no permite identificar dónde, cuándo y bajo qué condiciones se presentan los eventos más severos.
 
 El dataset ATUS del INEGI permite estudiar los accidentes viales desde distintas perspectivas:
 
@@ -34,19 +34,18 @@ El dataset ATUS del INEGI permite estudiar los accidentes viales desde distintas
 * Cantidad y tipo de vehículos involucrados.
 * Número de personas heridas y fallecidas.
 
-Este proyecto busca transformar los microdatos en información útil para responder preguntas concretas:
+Este proyecto transforma los microdatos originales en un modelo dimensional que permite responder preguntas concretas:
 
 1. **¿Qué entidades y municipios concentran la mayor cantidad de accidentes viales?**
 2. **¿Existen patrones por mes, día de la semana y franja horaria?**
-3. **¿Qué tipos de accidente presentan una mayor severidad?**
-4. **¿Qué características del conductor aparecen con mayor frecuencia en accidentes con personas heridas o fallecidas?**
-5. **¿Qué tipos de vehículos están involucrados con mayor frecuencia en los accidentes registrados?**
+3. **¿Qué proporción de accidentes corresponde a sólo daños, no fatales y fatales?**
+4. **¿Qué tipos de vehículos están involucrados con mayor frecuencia en los accidentes registrados?**
 
 ---
 
 ## 📦 Origen de los datos
 
-Los datos provienen del programa estadístico ATUS del Instituto Nacional de Estadística y Geografía (INEGI).
+Los datos provienen del programa estadístico **ATUS** del Instituto Nacional de Estadística y Geografía (INEGI).
 
 El archivo principal utilizado es:
 
@@ -73,7 +72,7 @@ Los CSV originales se almacenan localmente en:
 data/raw/
 ```
 
-No se cargan al repositorio debido a su tamaño. El repositorio contiene únicamente código, documentación y visualizaciones generadas.
+Los archivos de datos no se cargan al repositorio debido a su tamaño. El repositorio contiene código, scripts SQL, documentación, diagrama del modelo y dashboard.
 
 ---
 
@@ -108,10 +107,10 @@ No se cargan al repositorio debido a su tamaño. El repositorio contiene únicam
 ┌──────────────────────────────────────────────┐
 │ Transformación con pandas                    │
 │                                              │
-│ Extract:   lectura de CSVs                    │
+│ Extract:   lectura de CSVs                   │
 │ Transform: limpieza, cruces y validaciones   │
 │ Resolve:   generación de surrogate keys      │
-│ Load:      carga con SQLAlchemy               │
+│ Load:      carga con SQLAlchemy              │
 └──────────────────────┬───────────────────────┘
                        │
                        │ INSERT
@@ -133,7 +132,7 @@ No se cargan al repositorio debido a su tamaño. El repositorio contiene únicam
 │ • Rankings geográficos                       │
 │ • Tendencias temporales                      │
 │ • Análisis de severidad                      │
-│ • Visualizaciones con matplotlib             │
+│ • Visualizaciones interactivas               │
 └──────────────────────────────────────────────┘
 ```
 
@@ -141,7 +140,23 @@ No se cargan al repositorio debido a su tamaño. El repositorio contiene únicam
 
 ## ⭐ Modelo dimensional
 
-### Esquema estrella
+El proyecto utiliza un **esquema estrella** con una tabla de hechos central y cinco dimensiones.
+
+![Esquema estrella ATUS](docs/esquema_estrella_atus.png)
+
+### Tablas del modelo
+
+```text
+atus_dwh
+├── dim_fecha
+├── dim_tiempo
+├── dim_ubicacion
+├── dim_accidente
+├── dim_conductor
+└── fact_accidentes
+```
+
+### Esquema conceptual
 
 ```text
                          ┌────────────────────────────┐
@@ -154,28 +169,31 @@ No se cargan al repositorio debido a su tamaño. El repositorio contiene únicam
                          │ mes_numero                 │
                          │ mes_nombre                 │
                          │ dia_mes                    │
+                         │ dia_semana_numero          │
                          │ dia_semana_nombre          │
                          │ es_fin_semana              │
                          └──────────────▲─────────────┘
                                         │
                                         │
 ┌────────────────────────────┐          │          ┌────────────────────────────┐
-│       dim_ubicacion        │          │          │       dim_accidente       │
+│       dim_ubicacion        │          │          │       dim_accidente        │
 │────────────────────────────│          │          │────────────────────────────│
-│ ubicacion_key PK           │◄─────────┼─────────►│ accidente_key PK          │
-│ id_entidad                 │                     │ tipo_accidente             │
-│ entidad                    │                     │ causa_accidente            │
-│ id_municipio               │                     │ clasificacion              │
-│ municipio                  │                     │ zona_urbana                │
-│ cobertura                  │                     │ zona_suburbana             │
-└────────────────────────────┘                     │ capa_rodamiento            │
-                                                  └────────────────────────────┘
+│ ubicacion_key PK           │◄─────────┼─────────►│ accidente_key PK           │
+│ id_entidad                 │          |           │ tipo_accidente             │
+│ entidad                    │          |           │ causa_accidente            │
+│ id_municipio               │          |           │ clasificacion              │
+│ municipio                  │          |           │ zona_urbana                │
+│ cobertura                  │          |           │ zona_suburbana             │
+└────────────────────────────┘          |           │ capa_rodamiento            │
+                                        |           │ estatus                    │
+                                        |           └────────────────────────────┘
                                         │
                                         │
                          ┌──────────────▼─────────────┐
                          │      fact_accidentes       │
                          │────────────────────────────│
                          │ accidente_id PK            │
+                         │ source_row_id              │
                          │ date_key FK                │
                          │ time_key FK                │
                          │ ubicacion_key FK           │
@@ -211,21 +229,166 @@ No se cargan al repositorio debido a su tamaño. El repositorio contiene únicam
 
 **Grano de la fact:** una fila por accidente vial registrado en ATUS. Este es el nivel más fino que provee el origen. Cada registro representa un evento ocurrido en una ubicación, fecha y horario determinados, junto con sus atributos de severidad, características del conductor y vehículos involucrados.
 
-**Por qué `dim_tiempo` está separada de `dim_fecha`:** los patrones diarios y los patrones horarios responden a preguntas diferentes. La separación facilita analizar tendencias por mes o día de la semana, al mismo tiempo que permite agrupar por franja horaria sin reconstruir timestamps en cada consulta.
+**Decisiones sobre dim_tiempo` y `dim_fecha`:** Se decidió separarlos debido a que los patrones diarios y los patrones horarios responden a preguntas diferentes. La separación facilita analizar tendencias por mes o día de la semana, al mismo tiempo que permite agrupar por franja horaria sin reconstruir timestamps en cada consulta.
 
-**Por qué `dim_ubicacion` integra entidad y municipio:** el municipio pertenece naturalmente a una entidad federativa. Ambos atributos se aplanan en una sola dimensión para simplificar las consultas geográficas y evitar una normalización innecesaria dentro del esquema estrella.
+**Decisiones sobre el porque `dim_ubicacion` integra entidad y municipio:** el municipio pertenece naturalmente a una entidad federativa. Ambos atributos se aplanan en una sola dimensión para simplificar las consultas geográficas y evitar una normalización innecesaria dentro del esquema estrella.
 
-**Por qué `dim_accidente` concentra tipo, causa y clasificación:** estas variables describen la naturaleza del evento vial. Agruparlas en una dimensión facilita comparar frecuencia y severidad entre atropellamientos, colisiones, volcaduras y otros tipos de accidente.
+**Decisiones sobre el porque `dim_accidente` concentra tipo, causa y clasificación:** estas variables describen la naturaleza del evento vial. Agruparlas en una dimensión facilita comparar frecuencia y severidad entre atropellamientos, colisiones, volcaduras y otros tipos de accidente.
 
-**Por qué `dim_conductor` se mantiene separada:** variables como sexo, edad, aliento alcohólico y uso del cinturón corresponden al perfil de la persona conductora. Mantenerlas en una dimensión propia permite estudiar su relación con la severidad del accidente.
+**Decisiones sobre el porque `dim_conductor` se mantiene separada:** variables como sexo, edad, aliento alcohólico y uso del cinturón corresponden al perfil de la persona conductora. Mantenerlas en una dimensión propia permite estudiar su relación con la severidad del accidente.
 
-**Por qué los vehículos permanecen en la fact:** ATUS reporta los vehículos involucrados como conteos por accidente. Estas columnas son medidas aditivas, por lo que pueden agregarse directamente mediante `SUM()` sin crear una relación muchos-a-muchos adicional.
+**Decisiones sobre el porque los vehículos permanecen en la fact:** ATUS reporta los vehículos involucrados como conteos por accidente. Estas columnas son medidas aditivas, por lo que pueden agregarse directamente mediante `SUM()` sin crear una relación muchos-a-muchos adicional.
 
-**Por qué se conserva la medida `num_accidentes`:** cada registro recibe el valor constante `1`. Esto permite calcular el total de accidentes con `SUM(num_accidentes)` y mantener consistencia con las demás métricas agregables.
+**Decisiones sobre el porque conserva la medida `num_accidentes`:** cada registro recibe el valor constante `1`. Esto permite calcular el total de accidentes con `SUM(num_accidentes)` y mantener consistencia con las demás métricas agregables.
+
+**Decisiones sobre el porque `source_row_id`:** se conserva un identificador técnico de la fila original del CSV para trazabilidad e idempotencia durante el proceso ETL.
 
 **Por qué no se filtran los accidentes clasificados como “sólo daños”:** estos registros también forman parte de la siniestralidad vial. Excluirlos sesgaría el análisis al concentrarse únicamente en accidentes con personas heridas o fallecidas.
 
 ---
+
+## 🛠️ Proceso ETL
+
+El ETL se implementó en Python con `pandas` y `SQLAlchemy`.
+
+Archivo principal:
+
+```text
+scripts/etl_pipeline_atus2024.py
+```
+
+El proceso realiza:
+
+1. Lectura de archivos CSV desde `data/raw/`.
+2. Limpieza de columnas y normalización de tipos de dato.
+3. Cruce con catálogos de entidad, municipio y edad.
+4. Construcción de dimensiones derivadas:
+
+   * `dim_ubicacion`
+   * `dim_accidente`
+   * `dim_conductor`
+5. Resolución de surrogate keys.
+6. Carga de `fact_accidentes`.
+7. Validaciones post-carga:
+
+   * conteo de registros cargados
+   * llaves nulas
+   * totales generales
+   * top de entidades por accidentes
+
+Las dimensiones `dim_fecha` y `dim_tiempo` se cargan previamente mediante SQL.
+
+---
+
+## 🔎 Consultas analíticas
+
+Las consultas se encuentran en:
+
+```text
+analisis/queries_analiticas.sql
+```
+
+El archivo incluye 7 consultas analíticas:
+
+1. **Ranking de entidades con mayor número de accidentes.**
+2. **Tendencia mensual de accidentes, muertos y heridos.**
+3. **Promedio móvil semanal de accidentes.**
+4. **Accidentes por día de semana y banda horaria.**
+5. **Municipios con mayor siniestralidad dentro de cada entidad.**
+6. **Participación porcentual de accidentes por clasificación.**
+7. **Vehículos más involucrados en accidentes.**
+
+Las consultas utilizan:
+
+* `CTE`
+* `RANK()`
+* `ROW_NUMBER()`
+* `LAG()`
+* `AVG() OVER()`
+* `COUNT(*) FILTER`
+* `SUM() OVER()`
+* `UNION ALL`
+
+---
+
+## 📊 Dashboard interactivo
+
+El dashboard se desarrolló con:
+
+```text
+Streamlit + Plotly
+```
+
+Archivo principal:
+
+```text
+dashboard/app.py
+```
+
+El dashboard permite visualizar:
+
+* KPIs generales de accidentes, muertos y heridos.
+* Ranking de entidades con más accidentes.
+* Top de municipios por entidad.
+* Tendencia mensual de accidentes.
+* Promedio móvil semanal.
+* Heatmap por día de semana y banda horaria.
+* Distribución por clasificación del accidente.
+* Perfil del conductor en accidentes con víctimas.
+* Vehículos más involucrados.
+
+---
+
+## 📌 Hallazgos principales
+
+### 1. Concentración geográfica
+
+El análisis muestra una fuerte concentración de accidentes en ciertas entidades. **Nuevo León** destaca como la entidad con mayor número de accidentes viales registrados en ATUS 2024, con una diferencia considerable respecto al resto del top 10.
+
+Después aparecen entidades como **Chihuahua**, **Sonora**, **México**, **Jalisco** y **Guanajuato**, lo que sugiere que la siniestralidad vial no se distribuye de manera uniforme en el país.
+
+---
+
+### 2. Comportamiento mensual relativamente estable
+
+La tendencia mensual de accidentes muestra que el número de eventos se mantiene relativamente estable durante 2024, con valores cercanos a los **30 mil–35 mil accidentes mensuales**.
+
+Se observa un aumento hacia **mayo**, una disminución en **julio** y un nuevo incremento hacia **octubre y noviembre**.
+
+---
+
+### 3. Predominio de accidentes de sólo daños
+
+La mayoría de los accidentes registrados corresponde a la clasificación **“Sólo daños”**, con aproximadamente **82.6%** del total.
+
+Los accidentes **no fatales** representan alrededor de **16.4%**, mientras que los **fatales** son una proporción menor, cercana a **1.07%**.
+
+Este resultado muestra que, aunque la mayoría de los eventos no involucra víctimas, existe un subconjunto relevante de accidentes con consecuencias humanas.
+
+---
+
+### 4. Automóviles como vehículo más frecuente
+
+El **automóvil** aparece como el tipo de vehículo más involucrado en accidentes, con una diferencia amplia respecto al resto.
+
+En segundo lugar aparecen las **motocicletas**, seguidas por **camionetas** y **camiones**. Esto sugiere que el análisis de siniestralidad vial debe considerar tanto el volumen de circulación como la vulnerabilidad de ciertos usuarios viales.
+
+---
+
+### 5. Importancia de separar frecuencia y severidad
+
+El proyecto permite distinguir entre:
+
+```text
+Frecuencia  → cuántos accidentes ocurren
+Severidad   → cuántas personas resultan heridas o fallecidas
+```
+
+Esta separación es importante porque una entidad puede concentrar muchos accidentes de sólo daños, mientras que otra con menos eventos puede tener mayor proporción de accidentes con víctimas.
+
+---
+
+
 
 ## 📂 Estructura del repositorio
 
@@ -238,24 +401,19 @@ ATUS-2024-Siniestralidad-Vial/
 │   ├── raw/                         ← CSVs locales, excluidos de GitHub
 │   └── processed/                   ← archivos intermedios, excluidos de GitHub
 │
-├── notebooks/
-│   ├── 01_exploracion.ipynb         ← exploración inicial
-│   └── 02_etl_desarrollo.ipynb      ← desarrollo del ETL
+├── docs/
+│   └── esquema_estrella_atus.png    ← diagrama ER del modelo dimensional
 │
 ├── scripts/
 │   ├── 01_schema_ddl.sql            ← creación del esquema estrella
-│   └── etl_pipeline.py              ← ETL Python end-to-end
+│   ├── 02_dim_fecha_tiempo_populate.sql
+│   └── etl_pipeline_atus2024.py     ← ETL Python end-to-end
 │
 ├── analisis/
-│   └── queries_analiticas.sql       ← consultas con SQL avanzado
+│   └── queries_analiticas.sql       ← consultas SQL avanzadas
 │
 └── dashboard/
-    ├── generar_visualizaciones.py   ← generación de gráficos
-    └── img/
-        ├── 01_mapa_accidentes.png
-        ├── 02_serie_mensual.png
-        ├── 03_top_municipios.png
-        └── 04_heatmap_hora_dia.png
+    └── app.py                       ← dashboard interactivo en Streamlit
 ```
 
 ---
@@ -265,8 +423,10 @@ ATUS-2024-Siniestralidad-Vial/
 ### 1. Instalar dependencias
 
 ```bash
-pip install pandas sqlalchemy psycopg2-binary tqdm matplotlib
+python3 -m pip install pandas sqlalchemy psycopg2-binary tqdm streamlit plotly
 ```
+
+---
 
 ### 2. Crear el schema en Aurora PostgreSQL
 
@@ -274,13 +434,6 @@ Desde DBeaver, abre y ejecuta:
 
 ```text
 scripts/01_schema_ddl.sql
-```
-
-También puedes ejecutarlo desde Terminal con `psql`:
-
-```bash
-psql "postgresql://postgres:TU_PASSWORD@TU_HOST:5432/TU_DATABASE" \
-    -f scripts/01_schema_ddl.sql
 ```
 
 Esto crea el schema:
@@ -291,21 +444,49 @@ atus_dwh
 
 con las tablas dimensionales y la tabla de hechos vacías.
 
-### 3. Ejecutar el ETL
+---
 
-> Esta sección se completará cuando el archivo `etl_pipeline.py` esté listo.
+### 3. Poblar dimensiones de fecha y tiempo
 
-El comando tendrá una estructura similar a:
+Desde DBeaver, ejecuta:
 
-```bash
-python scripts/etl_pipeline.py \
-    --host TU_HOST_AURORA \
-    --password TU_PASSWORD \
-    --database TU_DATABASE \
-    --data-dir ./data/raw
+```text
+scripts/02_dim_fecha_tiempo_populate.sql
 ```
 
-### 4. Ejecutar consultas analíticas
+Validaciones esperadas:
+
+```sql
+SELECT COUNT(*) FROM atus_dwh.dim_fecha;   -- esperado: 366
+SELECT COUNT(*) FROM atus_dwh.dim_tiempo;  -- esperado: 1441
+```
+
+---
+
+### 4. Ejecutar el ETL
+
+Desde la raíz del proyecto:
+
+```bash
+python3 scripts/etl_pipeline_atus2024.py \
+    --host TU_HOST_AURORA \
+    --password "TU_PASSWORD" \
+    --database northwind \
+    --data-dir data/raw
+```
+
+El ETL carga:
+
+```text
+dim_ubicacion
+dim_accidente
+dim_conductor
+fact_accidentes
+```
+
+---
+
+### 5. Ejecutar consultas analíticas
 
 Desde DBeaver, abre:
 
@@ -313,48 +494,19 @@ Desde DBeaver, abre:
 analisis/queries_analiticas.sql
 ```
 
-Las consultas incluirán:
+Ejecuta las consultas por bloques para revisar los resultados de cada análisis.
 
-* Ranking de entidades y municipios.
-* Tendencias mensuales.
-* Patrones por hora y día de la semana.
-* Severidad por tipo de accidente.
-* Comparaciones mediante funciones de ventana.
+---
 
-### 5. Generar visualizaciones
+### 6. Ejecutar dashboard interactivo
 
-> Esta sección se completará cuando el script del dashboard esté listo.
+Desde la raíz del proyecto:
 
 ```bash
-python dashboard/generar_visualizaciones.py
+python3 -m streamlit run dashboard/app.py
 ```
 
----
-
-## 📊 Visualizaciones planeadas
-
-1. **Mapa de accidentes por entidad federativa.**
-2. **Serie mensual de accidentes registrados.**
-3. **Top de municipios con mayor número de accidentes.**
-4. **Heatmap de accidentes por hora y día de la semana.**
-5. **Severidad por tipo de accidente.**
-
----
-
-## 🚧 Estado del proyecto
-
-| Componente                          | Estado           |
-| ----------------------------------- | ---------------- |
-| Definición de la pregunta analítica | ✅ Completado     |
-| Descarga de datos ATUS 2024         | ✅ Completado     |
-| Organización del repositorio        | ✅ Completado     |
-| Diseño del esquema estrella         | ✅ Completado     |
-| Script DDL                          | 🟡 En desarrollo |
-| Exploración inicial en Python       | 🟡 En desarrollo |
-| ETL end-to-end                      | ⏳ Pendiente      |
-| Consultas SQL avanzadas             | ⏳ Pendiente      |
-| Visualizaciones                     | ⏳ Pendiente      |
-| Documentación final                 | ⏳ Pendiente      |
+Al abrirse el dashboard en el navegador, ingresa la contraseña de la base de datos en el panel lateral.
 
 ---
 
@@ -362,3 +514,4 @@ python dashboard/generar_visualizaciones.py
 
 **Aldo Ramírez Alanís**
 
+Proyecto final del módulo de Business Intelligence y SQL Avanzado.
