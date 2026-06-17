@@ -1,9 +1,9 @@
 -- =============================================================================
--- Proyecto final — Siniestralidad vial en México
--- Fuente: ATUS 2024, INEGI
+-- Proyecto final — Siniestralidad vial en Mexico (ATUS 2024)
 -- =============================================================================
 -- Schema: atus_dwh
--- Grano de la fact: una fila por accidente vial registrado
+-- Grano de la fact: una fila por accidente vial registrado en ATUS
+-- Fuente: INEGI — Accidentes de Transito Terrestre en Zonas Urbanas y Suburbanas
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS atus_dwh;
@@ -13,7 +13,7 @@ SET search_path TO atus_dwh;
 -- DIMENSIONES
 -- -----------------------------------------------------------------------------
 
--- Una fila por fecha calendario presente en el dataset.
+-- Una fila por fecha calendario.
 -- date_key es una smart key con formato YYYYMMDD.
 CREATE TABLE dim_fecha (
     date_key              INT          PRIMARY KEY,  -- Ejemplo: 20240115
@@ -21,10 +21,10 @@ CREATE TABLE dim_fecha (
     anio                  SMALLINT     NOT NULL,
     trimestre             SMALLINT     NOT NULL,
     mes_numero            SMALLINT     NOT NULL,
-    mes_nombre            VARCHAR(12)  NOT NULL,
+    mes_nombre            VARCHAR(15)  NOT NULL,
     dia_mes               SMALLINT     NOT NULL,
     dia_semana_numero     SMALLINT     NOT NULL,
-    dia_semana_nombre     VARCHAR(10)  NOT NULL,
+    dia_semana_nombre     VARCHAR(15)  NOT NULL,
     es_fin_semana         BOOLEAN      NOT NULL,
 
     CONSTRAINT chk_dim_fecha_mes
@@ -41,50 +41,59 @@ CREATE TABLE dim_fecha (
 );
 
 
--- Una fila por combinación hora × minuto.
+-- Una fila por combinacion hora × minuto.
 -- time_key es una smart key con formato HHMM.
+-- Se usa -1 para registros sin hora/minuto especificado.
 CREATE TABLE dim_tiempo (
-    time_key              SMALLINT     PRIMARY KEY,  -- Ejemplo: 1845
+    time_key              SMALLINT     PRIMARY KEY,      -- Ejemplo: 1845, -1 si no especifica
     hora                  SMALLINT     NOT NULL,
     minuto                SMALLINT     NOT NULL,
-    hora_texto            CHAR(5)      NOT NULL UNIQUE,  -- Ejemplo: 18:45
-    banda_horaria         VARCHAR(12)  NOT NULL,         -- madrugada, mañana, tarde, noche
+    hora_texto            VARCHAR(8)   NOT NULL UNIQUE,  -- Ejemplo: 18:45, S/E
+    banda_horaria         VARCHAR(20)  NOT NULL,         -- Madrugada, Mañana, Tarde, Noche, Sin especificar
 
     CONSTRAINT chk_dim_tiempo_hora
-        CHECK (hora BETWEEN 0 AND 23),
+        CHECK (hora BETWEEN 0 AND 23 OR hora = -1),
 
     CONSTRAINT chk_dim_tiempo_minuto
-        CHECK (minuto BETWEEN 0 AND 59),
+        CHECK (minuto BETWEEN 0 AND 59 OR minuto = -1),
 
     CONSTRAINT chk_dim_tiempo_banda
-        CHECK (banda_horaria IN ('Madrugada', 'Mañana', 'Tarde', 'Noche'))
+        CHECK (
+            banda_horaria IN (
+                'Madrugada',
+                'Mañana',
+                'Tarde',
+                'Noche',
+                'Sin especificar'
+            )
+        )
 );
 
 
--- Una fila por combinación entidad × municipio × cobertura.
+-- Una fila por combinacion entidad × municipio × cobertura.
 CREATE TABLE dim_ubicacion (
-    ubicacion_key         INT          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_entidad            SMALLINT     NOT NULL,
-    entidad               VARCHAR(50)  NOT NULL,
-    id_municipio          SMALLINT     NOT NULL,
-    municipio             VARCHAR(100) NOT NULL,
-    cobertura             VARCHAR(30)  NOT NULL,
+    ubicacion_key         INT           GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_entidad            SMALLINT      NOT NULL,
+    entidad               VARCHAR(80)   NOT NULL,
+    id_municipio          SMALLINT      NOT NULL,
+    municipio             VARCHAR(150)  NOT NULL,
+    cobertura             VARCHAR(50)   NOT NULL,
 
     CONSTRAINT uq_dim_ubicacion
         UNIQUE (id_entidad, id_municipio, cobertura)
 );
 
 
--- Una fila por combinación de atributos descriptivos del accidente.
+-- Una fila por combinacion de atributos descriptivos del accidente.
 CREATE TABLE dim_accidente (
-    accidente_key         INT          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    tipo_accidente        VARCHAR(100) NOT NULL,
-    causa_accidente       VARCHAR(50)  NOT NULL,
-    clasificacion         VARCHAR(30)  NOT NULL,
-    zona_urbana           VARCHAR(80),
-    zona_suburbana        VARCHAR(80),
-    capa_rodamiento       VARCHAR(50),
-    estatus               VARCHAR(50),
+    accidente_key         INT           GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tipo_accidente        VARCHAR(150)  NOT NULL,
+    causa_accidente       VARCHAR(100)  NOT NULL,
+    clasificacion         VARCHAR(60)   NOT NULL,
+    zona_urbana           VARCHAR(100)  NOT NULL,
+    zona_suburbana        VARCHAR(100)  NOT NULL,
+    capa_rodamiento       VARCHAR(100)  NOT NULL,
+    estatus               VARCHAR(100)  NOT NULL,
 
     CONSTRAINT uq_dim_accidente
         UNIQUE (
@@ -99,14 +108,14 @@ CREATE TABLE dim_accidente (
 );
 
 
--- Una fila por combinación de características de la persona conductora.
+-- Una fila por combinacion de caracteristicas de la persona conductora.
 CREATE TABLE dim_conductor (
-    conductor_key         INT          GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    sexo                  VARCHAR(20)  NOT NULL,
-    id_edad               SMALLINT     NOT NULL,
-    edad_descripcion      VARCHAR(60)  NOT NULL,
-    aliento_alcoholico    VARCHAR(20),
-    cinturon_seguridad    VARCHAR(20),
+    conductor_key         INT           GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sexo                  VARCHAR(40)   NOT NULL,
+    id_edad               SMALLINT      NOT NULL,
+    edad_descripcion      VARCHAR(100)  NOT NULL,
+    aliento_alcoholico    VARCHAR(40)   NOT NULL,
+    cinturon_seguridad    VARCHAR(40)   NOT NULL,
 
     CONSTRAINT uq_dim_conductor
         UNIQUE (
@@ -126,7 +135,11 @@ CREATE TABLE dim_conductor (
 CREATE TABLE fact_accidentes (
     accidente_id          BIGINT       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
-    -- Foreign keys
+    -- Identificador tecnico de la fila original del CSV.
+    -- Sirve para trazabilidad e idempotencia del ETL.
+    source_row_id         BIGINT       NOT NULL UNIQUE,
+
+    -- Foreign keys del esquema estrella
     date_key              INT          NOT NULL REFERENCES dim_fecha(date_key),
     time_key              SMALLINT     NOT NULL REFERENCES dim_tiempo(time_key),
     ubicacion_key         INT          NOT NULL REFERENCES dim_ubicacion(ubicacion_key),
@@ -136,7 +149,7 @@ CREATE TABLE fact_accidentes (
     -- Medida base para facilitar agregaciones
     num_accidentes        SMALLINT     NOT NULL DEFAULT 1,
 
-    -- Vehículos involucrados
+    -- Vehiculos involucrados
     automovil             SMALLINT     NOT NULL DEFAULT 0,
     campasaj              SMALLINT     NOT NULL DEFAULT 0,
     microbus              SMALLINT     NOT NULL DEFAULT 0,
@@ -170,16 +183,47 @@ CREATE TABLE fact_accidentes (
     CONSTRAINT chk_fact_num_accidentes
         CHECK (num_accidentes = 1),
 
-    CONSTRAINT chk_fact_total_muertos
-        CHECK (total_muertos >= 0),
+    CONSTRAINT chk_fact_vehiculos_no_negativos
+        CHECK (
+            automovil >= 0
+            AND campasaj >= 0
+            AND microbus >= 0
+            AND pascamion >= 0
+            AND omnibus >= 0
+            AND tranvia >= 0
+            AND camioneta >= 0
+            AND camion >= 0
+            AND tractor >= 0
+            AND ferrocarril >= 0
+            AND motocicleta >= 0
+            AND bicicleta >= 0
+            AND otro_vehiculo >= 0
+        ),
 
-    CONSTRAINT chk_fact_total_heridos
-        CHECK (total_heridos >= 0)
+    CONSTRAINT chk_fact_muertos_no_negativos
+        CHECK (
+            conductor_muerto >= 0
+            AND pasajero_muerto >= 0
+            AND peaton_muerto >= 0
+            AND ciclista_muerto >= 0
+            AND otro_muerto >= 0
+            AND total_muertos >= 0
+        ),
+
+    CONSTRAINT chk_fact_heridos_no_negativos
+        CHECK (
+            conductor_herido >= 0
+            AND pasajero_herido >= 0
+            AND peaton_herido >= 0
+            AND ciclista_herido >= 0
+            AND otro_herido >= 0
+            AND total_heridos >= 0
+        )
 );
 
 
 -- -----------------------------------------------------------------------------
--- ÍNDICES PARA CONSULTAS ANALÍTICAS
+-- INDICES PARA CONSULTAS ANALITICAS
 -- -----------------------------------------------------------------------------
 
 -- Tendencias temporales
@@ -189,7 +233,7 @@ CREATE INDEX idx_fact_fecha
 CREATE INDEX idx_fact_tiempo
     ON fact_accidentes(time_key);
 
--- Análisis geográfico
+-- Analisis geografico
 CREATE INDEX idx_fact_ubicacion
     ON fact_accidentes(ubicacion_key);
 
@@ -197,17 +241,26 @@ CREATE INDEX idx_fact_ubicacion
 CREATE INDEX idx_fact_accidente
     ON fact_accidentes(accidente_key);
 
--- Análisis del perfil del conductor
+-- Analisis del perfil del conductor
 CREATE INDEX idx_fact_conductor
     ON fact_accidentes(conductor_key);
 
--- Consulta combinada frecuente: ubicación × fecha
+-- Consulta combinada frecuente: ubicacion × fecha
 CREATE INDEX idx_fact_ubicacion_fecha
     ON fact_accidentes(ubicacion_key, date_key);
 
+-- Consultas de severidad
+CREATE INDEX idx_fact_accidentes_fatales
+    ON fact_accidentes(accidente_key, ubicacion_key, date_key)
+    WHERE total_muertos > 0;
+
+CREATE INDEX idx_fact_accidentes_con_heridos
+    ON fact_accidentes(accidente_key, ubicacion_key, date_key)
+    WHERE total_heridos > 0;
+
 
 -- =============================================================================
--- VERIFICACIÓN
+-- VERIFICACION
 -- =============================================================================
 
 -- Listar tablas creadas:
@@ -223,4 +276,4 @@ CREATE INDEX idx_fact_ubicacion_fecha
 --   dim_tiempo
 --   dim_ubicacion
 --   fact_accidentes
-
+-- =============================================================================
