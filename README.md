@@ -667,3 +667,4 @@ Al abrirse el dashboard en el navegador, ingresa la contraseña de la base de da
 **Aldo Ramírez Alanís**
 
 Proyecto final del módulo de Business Intelligence y SQL Avanzado.
+
