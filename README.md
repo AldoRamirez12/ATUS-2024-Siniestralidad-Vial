@@ -282,34 +282,109 @@ Las dimensiones `dim_fecha` y `dim_tiempo` se cargan previamente mediante SQL.
 
 ## 🔎 Consultas analíticas
 
-Las consultas se encuentran en:
+Las consultas analíticas se encuentran en:
 
 ```text
 analisis/queries_analiticas.sql
 ```
 
-El archivo incluye 7 consultas analíticas:
+El análisis final se compone de **7 consultas principales**, alineadas con las visualizaciones del dashboard interactivo:
 
-1. **Ranking de entidades con mayor número de accidentes.**
-2. **Tendencia mensual de accidentes, muertos y heridos.**
-3. **Promedio móvil semanal de accidentes.**
-4. **Accidentes por día de semana y banda horaria.**
-5. **Municipios con mayor siniestralidad dentro de cada entidad.**
-6. **Participación porcentual de accidentes por clasificación.**
-7. **Vehículos más involucrados en accidentes.**
+### 1. Ranking de entidades con mayor número de accidentes
 
-Las consultas utilizan:
+**Pregunta:**
+¿Qué entidades concentran la mayor cantidad de accidentes viales en 2024?
 
-* `CTE`
-* `RANK()`
-* `ROW_NUMBER()`
-* `LAG()`
-* `AVG() OVER()`
-* `COUNT(*) FILTER`
-* `SUM() OVER()`
-* `UNION ALL`
+**Técnica SQL utilizada:**
+`GROUP BY` + `RANK() OVER()`
+
+Esta consulta agrega los accidentes por entidad federativa y genera un ranking descendente para identificar las zonas con mayor concentración de siniestros viales.
 
 ---
+
+### 2. Tendencia mensual de accidentes
+
+**Pregunta:**
+¿Cómo evolucionó el número de accidentes viales a lo largo de 2024?
+
+**Técnica SQL utilizada:**
+`CTE` + `LAG() OVER()`
+
+La consulta calcula el total mensual de accidentes y compara cada mes contra el mes anterior mediante una función de ventana. Esto permite observar variaciones mensuales y detectar periodos con aumentos o disminuciones relevantes.
+
+---
+
+### 3. Promedio móvil semanal de accidentes
+
+**Pregunta:**
+¿Existen periodos con incrementos sostenidos en la frecuencia de accidentes?
+
+**Técnica SQL utilizada:**
+`AVG() OVER()` con ventana móvil de 7 días
+
+La consulta calcula el total diario de accidentes y un promedio móvil de 7 días. Esto suaviza la variabilidad diaria y permite identificar tendencias más estables en la siniestralidad.
+
+---
+
+### 4. Accidentes por día de semana y banda horaria
+
+**Pregunta:**
+¿En qué combinaciones de día de semana y franja horaria se concentran más accidentes?
+
+**Técnica SQL utilizada:**
+`GROUP BY` + ordenamiento personalizado con `CASE`
+
+La consulta cruza la dimensión de fecha con la dimensión de tiempo para analizar accidentes por día de la semana y banda horaria: madrugada, mañana, tarde, noche o sin especificar.
+
+---
+
+### 5. Municipios con mayor siniestralidad dentro de cada entidad
+
+**Pregunta:**
+¿Cuáles son los municipios con más accidentes dentro de cada entidad federativa?
+
+**Técnica SQL utilizada:**
+`ROW_NUMBER() OVER(PARTITION BY entidad)`
+
+Esta consulta calcula el total de accidentes por municipio y genera un ranking interno por entidad. Permite identificar los municipios más relevantes dentro de cada estado.
+
+---
+
+### 6. Participación porcentual de accidentes por clasificación
+
+**Pregunta:**
+¿Qué proporción de accidentes corresponde a sólo daños, no fatales y fatales?
+
+**Técnica SQL utilizada:**
+`SUM() OVER()` para calcular porcentaje sobre el total
+
+La consulta agrupa los accidentes por clasificación y calcula su participación porcentual respecto al total nacional. Esto permite distinguir entre accidentes de sólo daños, no fatales y fatales.
+
+---
+
+### 7. Vehículos más involucrados en accidentes
+
+**Pregunta:**
+¿Qué tipos de vehículos aparecen con mayor frecuencia en los accidentes registrados?
+
+**Técnica SQL utilizada:**
+`UNION ALL` para unpivot manual + `RANK() OVER()`
+
+Dado que ATUS reporta los vehículos involucrados como columnas separadas, esta consulta transforma dichas columnas en filas mediante `UNION ALL`. Después calcula el total por tipo de vehículo y genera un ranking.
+
+---
+
+### Resumen de técnicas SQL utilizadas
+
+| Consulta                      | Técnica principal                     |
+| ----------------------------- | ------------------------------------- |
+| Ranking de entidades          | `RANK() OVER()`                       |
+| Tendencia mensual             | `LAG() OVER()`                        |
+| Promedio móvil semanal        | `AVG() OVER()`                        |
+| Día de semana × banda horaria | `GROUP BY` + `CASE`                   |
+| Top municipios por entidad    | `ROW_NUMBER() OVER(PARTITION BY ...)` |
+| Clasificación de accidentes   | `SUM() OVER()`                        |
+| Vehículos involucrados        | `UNION ALL` + `RANK() OVER()`         |
 
 ## 📊 Dashboard interactivo
 
@@ -418,95 +493,15 @@ ATUS-2024-Siniestralidad-Vial/
 
 ---
 
-## 🔧 Cómo ejecutar
+## 👀 Para las visualizaciones
 
-### 1. Instalar dependencias
-
-```bash
-python3 -m pip install pandas sqlalchemy psycopg2-binary tqdm streamlit plotly
-```
-
----
-
-### 2. Crear el schema en Aurora PostgreSQL
-
-Desde DBeaver, abre y ejecuta:
-
-```text
-scripts/01_schema_ddl.sql
-```
-
-Esto crea el schema:
-
-```text
-atus_dwh
-```
-
-con las tablas dimensionales y la tabla de hechos vacías.
-
----
-
-### 3. Poblar dimensiones de fecha y tiempo
-
-Desde DBeaver, ejecuta:
-
-```text
-scripts/02_dim_fecha_tiempo_populate.sql
-```
-
-Validaciones esperadas:
-
-```sql
-SELECT COUNT(*) FROM atus_dwh.dim_fecha;   -- esperado: 366
-SELECT COUNT(*) FROM atus_dwh.dim_tiempo;  -- esperado: 1441
-```
-
----
-
-### 4. Ejecutar el ETL
-
-Desde la raíz del proyecto:
-
-```bash
-python3 scripts/etl_pipeline_atus2024.py \
-    --host TU_HOST_AURORA \
-    --password "TU_PASSWORD" \
-    --database northwind \
-    --data-dir data/raw
-```
-
-El ETL carga:
-
-```text
-dim_ubicacion
-dim_accidente
-dim_conductor
-fact_accidentes
-```
-
----
-
-### 5. Ejecutar consultas analíticas
-
-Desde DBeaver, abre:
-
-```text
-analisis/queries_analiticas.sql
-```
-
-Ejecuta las consultas por bloques para revisar los resultados de cada análisis.
-
----
-
-### 6. Ejecutar dashboard interactivo
-
-Desde la raíz del proyecto:
+Al abrir el dashboard interactivo para visualizar los KPI's de las consultas, ingresar desde la raíz del proyecto:
 
 ```bash
 python3 -m streamlit run dashboard/app.py
 ```
 
-Al abrirse el dashboard en el navegador, ingresa la contraseña de la base de datos en el panel lateral.
+Al abrirse el dashboard en el navegador, ingresa la contraseña de la base de datos en el panel lateral, dentro estarán todos los KPI's realizados.
 
 ---
 
