@@ -1,4 +1,3 @@
-
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -19,7 +18,7 @@ st.set_page_config(
 st.title("🚗 Siniestralidad vial en México")
 st.markdown(
     """
-    Análisis de siniestros viales basados en el estudio ATUS 2024 del INEGI.
+    Análisis de siniestros viales basado en el estudio **ATUS 2024** del INEGI.
     """
 )
 
@@ -87,17 +86,7 @@ def load_kpis(_engine):
     query = """
     SELECT
         COUNT(*) AS registros_fact,
-        SUM(num_accidentes) AS total_accidentes,
-        SUM(total_muertos) AS total_muertos,
-        SUM(total_heridos) AS total_heridos,
-        ROUND(
-            SUM(total_muertos)::NUMERIC / NULLIF(SUM(num_accidentes), 0),
-            4
-        ) AS muertos_por_accidente,
-        ROUND(
-            SUM(total_heridos)::NUMERIC / NULLIF(SUM(num_accidentes), 0),
-            4
-        ) AS heridos_por_accidente
+        SUM(num_accidentes) AS total_accidentes
     FROM atus_dwh.fact_accidentes;
     """
     return pd.read_sql(query, _engine)
@@ -113,9 +102,7 @@ def q1_ranking_entidades(_engine):
     WITH accidentes_entidad AS (
         SELECT
             du.entidad,
-            SUM(fa.num_accidentes) AS total_accidentes,
-            SUM(fa.total_muertos) AS total_muertos,
-            SUM(fa.total_heridos) AS total_heridos
+            SUM(fa.num_accidentes) AS total_accidentes
         FROM atus_dwh.fact_accidentes fa
         JOIN atus_dwh.dim_ubicacion du
             ON fa.ubicacion_key = du.ubicacion_key
@@ -124,11 +111,7 @@ def q1_ranking_entidades(_engine):
     SELECT
         RANK() OVER (ORDER BY total_accidentes DESC) AS ranking,
         entidad,
-        total_accidentes,
-        total_muertos,
-        total_heridos,
-        ROUND(total_muertos::NUMERIC / NULLIF(total_accidentes, 0), 4) AS muertos_por_accidente,
-        ROUND(total_heridos::NUMERIC / NULLIF(total_accidentes, 0), 4) AS heridos_por_accidente
+        total_accidentes
     FROM accidentes_entidad
     ORDER BY ranking
     LIMIT 10;
@@ -147,9 +130,7 @@ def q2_tendencia_mensual(_engine):
         SELECT
             df.mes_numero,
             df.mes_nombre,
-            SUM(fa.num_accidentes) AS total_accidentes,
-            SUM(fa.total_muertos) AS total_muertos,
-            SUM(fa.total_heridos) AS total_heridos
+            SUM(fa.num_accidentes) AS total_accidentes
         FROM atus_dwh.fact_accidentes fa
         JOIN atus_dwh.dim_fecha df
             ON fa.date_key = df.date_key
@@ -159,8 +140,6 @@ def q2_tendencia_mensual(_engine):
         mes_numero,
         mes_nombre,
         total_accidentes,
-        total_muertos,
-        total_heridos,
         LAG(total_accidentes) OVER (ORDER BY mes_numero) AS accidentes_mes_anterior,
         total_accidentes
             - LAG(total_accidentes) OVER (ORDER BY mes_numero) AS variacion_accidentes,
@@ -220,9 +199,7 @@ def q4_dia_banda(_engine):
         df.dia_semana_numero,
         df.dia_semana_nombre,
         dt.banda_horaria,
-        SUM(fa.num_accidentes) AS total_accidentes,
-        SUM(fa.total_muertos) AS total_muertos,
-        SUM(fa.total_heridos) AS total_heridos
+        SUM(fa.num_accidentes) AS total_accidentes
     FROM atus_dwh.fact_accidentes fa
     JOIN atus_dwh.dim_fecha df
         ON fa.date_key = df.date_key
@@ -256,9 +233,7 @@ def q5_top_municipios(_engine):
         SELECT
             du.entidad,
             du.municipio,
-            SUM(fa.num_accidentes) AS total_accidentes,
-            SUM(fa.total_muertos) AS total_muertos,
-            SUM(fa.total_heridos) AS total_heridos
+            SUM(fa.num_accidentes) AS total_accidentes
         FROM atus_dwh.fact_accidentes fa
         JOIN atus_dwh.dim_ubicacion du
             ON fa.ubicacion_key = du.ubicacion_key
@@ -269,8 +244,6 @@ def q5_top_municipios(_engine):
             entidad,
             municipio,
             total_accidentes,
-            total_muertos,
-            total_heridos,
             ROW_NUMBER() OVER (
                 PARTITION BY entidad
                 ORDER BY total_accidentes DESC
@@ -281,8 +254,6 @@ def q5_top_municipios(_engine):
         entidad,
         municipio,
         total_accidentes,
-        total_muertos,
-        total_heridos,
         ranking_en_entidad
     FROM ranking_municipios
     WHERE ranking_en_entidad <= 3
@@ -301,9 +272,7 @@ def q6_clasificacion(_engine):
     WITH accidentes_clasificacion AS (
         SELECT
             da.clasificacion,
-            SUM(fa.num_accidentes) AS total_accidentes,
-            SUM(fa.total_muertos) AS total_muertos,
-            SUM(fa.total_heridos) AS total_heridos
+            SUM(fa.num_accidentes) AS total_accidentes
         FROM atus_dwh.fact_accidentes fa
         JOIN atus_dwh.dim_accidente da
             ON fa.accidente_key = da.accidente_key
@@ -312,8 +281,6 @@ def q6_clasificacion(_engine):
     SELECT
         clasificacion,
         total_accidentes,
-        total_muertos,
-        total_heridos,
         ROUND(
             100.0 * total_accidentes
             / SUM(total_accidentes) OVER (),
@@ -391,13 +358,10 @@ st.subheader("📌 Resumen general")
 
 kpi = kpis.iloc[0]
 
-col1, col2, col3, col4, col5 = st.columns(5)
-
-col1.metric("Accidentes", format_int(kpi["total_accidentes"]))
-col2.metric("Muertos", format_int(kpi["total_muertos"]))
-col3.metric("Heridos", format_int(kpi["total_heridos"]))
-col4.metric("Muertos / accidente", f"{kpi['muertos_por_accidente']:.4f}")
-col5.metric("Heridos / accidente", f"{kpi['heridos_por_accidente']:.4f}")
+st.metric(
+    label="Accidentes registrados",
+    value=format_int(kpi["total_accidentes"]),
+)
 
 st.divider()
 
@@ -411,7 +375,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
         "🗺️ Geografía",
         "📈 Temporal",
         "🕒 Día y hora",
-        "⚠️ Severidad",
+        "⚠️ Clasificación",
         "🚗 Vehículos",
     ]
 )
@@ -429,13 +393,7 @@ with tab1:
         x="total_accidentes",
         y="entidad",
         orientation="h",
-        hover_data=[
-            "ranking",
-            "total_muertos",
-            "total_heridos",
-            "muertos_por_accidente",
-            "heridos_por_accidente",
-        ],
+        hover_data=["ranking", "total_accidentes"],
         title="Top 10 entidades por accidentes viales",
         labels={
             "total_accidentes": "Accidentes",
@@ -451,7 +409,7 @@ with tab1:
 
     st.divider()
 
-    st.header("5. Municipios con mayor siniestralidad dentro de cada entidad")
+    st.header("2. Municipios con mayor siniestralidad dentro de cada entidad")
 
     entidades = sorted(q5["entidad"].unique())
     entidad_sel = st.selectbox("Selecciona una entidad", entidades)
@@ -466,7 +424,7 @@ with tab1:
         x="total_accidentes",
         y="municipio",
         orientation="h",
-        hover_data=["total_muertos", "total_heridos", "ranking_en_entidad"],
+        hover_data=["ranking_en_entidad", "total_accidentes"],
         title=f"Top municipios en {entidad_sel}",
         labels={
             "total_accidentes": "Accidentes",
@@ -486,30 +444,29 @@ with tab1:
 # =============================================================================
 
 with tab2:
-    st.header("2. Tendencia mensual de accidentes, muertos y heridos")
+    st.header("3. Tendencia mensual de accidentes")
 
     fig_q2 = px.line(
         q2,
         x="mes_nombre",
-        y=["total_accidentes", "total_heridos", "total_muertos"],
+        y="total_accidentes",
         markers=True,
-        title="Tendencia mensual de accidentes, heridos y muertos",
+        title="Tendencia mensual de accidentes",
         labels={
             "mes_nombre": "Mes",
-            "value": "Total",
-            "variable": "Métrica",
+            "total_accidentes": "Accidentes",
         },
     )
     fig_q2.update_layout(
         xaxis_title="Mes",
-        yaxis_title="Total",
+        yaxis_title="Accidentes",
         height=500,
     )
     st.plotly_chart(fig_q2, use_container_width=True)
 
     st.divider()
 
-    st.header("3. Promedio móvil semanal de accidentes")
+    st.header("4. Promedio móvil semanal de accidentes")
 
     fig_q3 = px.line(
         q3,
@@ -535,7 +492,7 @@ with tab2:
 # =============================================================================
 
 with tab3:
-    st.header("4. Accidentes por día de semana y banda horaria")
+    st.header("5. Accidentes por día de semana y banda horaria")
 
     orden_dias = [
         "Lunes",
@@ -583,7 +540,7 @@ with tab3:
 
 
 # =============================================================================
-# Tab 4 — Severidad
+# Tab 4 — Clasificación
 # =============================================================================
 
 with tab4:
@@ -597,7 +554,7 @@ with tab4:
             names="clasificacion",
             values="total_accidentes",
             title="Distribución de accidentes por clasificación",
-            hover_data=["porcentaje_accidentes", "total_muertos", "total_heridos"],
+            hover_data=["porcentaje_accidentes"],
         )
         fig_q6_pie.update_layout(height=500)
         st.plotly_chart(fig_q6_pie, use_container_width=True)
@@ -625,6 +582,7 @@ with tab4:
 # =============================================================================
 # Tab 5 — Vehículos
 # =============================================================================
+
 with tab5:
     st.header("7. Vehículos más involucrados en accidentes")
 
@@ -658,7 +616,7 @@ st.divider()
 
 st.markdown(
     """
-    **Fuente:** INEGI — Accidentes de Tránsito Terrestre en Zonas Urbanas y Suburbanas (ATUS), 2024.  
+    **Fuente:** INEGI — Accidentes de Tránsito Terrestre en Zonas Urbanas y Suburbanas (ATUS), 2024.
     """
 )
 
