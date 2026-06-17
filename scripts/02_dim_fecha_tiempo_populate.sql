@@ -19,6 +19,7 @@ INSERT INTO dim_fecha (
     mes_numero,
     mes_nombre,
     dia_mes,
+    dia_semana_numero,
     dia_semana_nombre,
     es_fin_semana
 )
@@ -43,6 +44,7 @@ SELECT
         WHEN 12 THEN 'Diciembre'
     END                                        AS mes_nombre,
     EXTRACT(day FROM d)::SMALLINT              AS dia_mes,
+    EXTRACT(isodow FROM d)::SMALLINT           AS dia_semana_numero,
     CASE EXTRACT(isodow FROM d)
         WHEN 1 THEN 'Lunes'
         WHEN 2 THEN 'Martes'
@@ -59,7 +61,6 @@ FROM generate_series(
     '1 day'
 ) AS d
 ON CONFLICT (date_key) DO NOTHING;
-
 
 -- -----------------------------------------------------------------------------
 -- dim_tiempo (1,440 filas hora:minuto + 1 fila para sin especificar)

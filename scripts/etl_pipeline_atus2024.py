@@ -11,9 +11,6 @@ Uso:
         --database northwind \
         --data-dir data/raw
 
-Prerrequisito:
-    1. Ejecutar scripts/01_schema_ddl.sql
-    2. Ejecutar scripts/02_dim_fecha_tiempo_populate.sql
 
 El ETL carga:
     - dim_ubicacion
